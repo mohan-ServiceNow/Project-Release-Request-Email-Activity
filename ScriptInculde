@@ -1,0 +1,277 @@
+var ProjectReleaseUtil = Class.create();
+ProjectReleaseUtil.prototype = Object.extendsObject(AbstractAjaxProcessor, {
+
+    dueDate: function() {
+        var monthInFullWords = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+        var x = (currentYear % 4 == 0) ? 29 : 28;
+        var days = [31, x, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+        var currentDate = new GlideDateTime();
+        var currentYear = currentDate.getYearLocalTime(); //get current year
+        var currentMonth = currentDate.getMonthLocalTime(); //get current month
+        var lastDate = days[currentMonth - 1]; // last date of current month
+
+        var formatDate = lastDate + '-' + currentMonth + '-' + currentYear + ' 12:00:00';
+        formatDate = formatDate.toString();
+        var secondLastWorkingDay = new GlideDateTime();
+        secondLastWorkingDay.setDisplayValue(formatDate);
+        // sunday - 0
+        // monday - 1
+        // tuesday - 2
+        // wednesday - 3
+        // thrusday - 4
+        // friday - 5
+        // saturday - 6
+        var date = secondLastWorkingDay.getDaysInMonthUTC();
+
+        if (date == 30) {
+            secondLastWorkingDay.addDaysLocalTime(-2);
+        } else if (date == 31) {
+            secondLastWorkingDay.addDaysLocalTime(-3);
+        } else {
+            secondLastWorkingDay.addDaysLocalTime(-1);
+        }
+
+        var onlyDate = new GlideDate();
+        onlyDate.setDisplayValue(secondLastWorkingDay.getDate());
+        return onlyDate;
+    },
+
+    dueDateInSubject: function() {
+        var monthInShortWords = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        var currentDate = new GlideDateTime();
+        var currentYear = currentDate.getYearLocalTime(); //get current year
+        var currentMonth = currentDate.getMonthLocalTime(); //get current month
+        var subjectDueDate = this.dueDate().getDisplayValueLang('short');
+        var subjectMonthYear = monthInShortWords[currentMonth - 1];
+        var subject = subjectMonthYear + '-' + currentYear + ' Project Release Request ' + '[Due Date ' + subjectDueDate + ']';
+        return subject.toString();
+    },
+
+    checkDueDatePassed: function() {
+        var result = {};
+        var currentDateTime = new GlideDateTime();
+        var currentMonth = currentDateTime.getMonthUTC();
+
+        var createdTime;
+        var sysId = this.getParameter('sysparm_sysid');
+        var gr = new GlideRecord('u_project_release');
+        if (gr.get(sysId)) {
+            createdTime = new GlideDateTime(gr.sys_created_on);
+        }
+        var createdMonth = createdTime.getMonthUTC();
+
+        if (createdMonth == currentMonth) {
+            result.sameMonth = 'yes';
+        } else {
+            result.sameMonth = 'no';
+        }
+
+        var dueDate = this.dueDate();
+        //         dueDate.setDisplayValue('2023-12-03');
+
+        var currentDate = new GlideDate();
+        var diff = gs.dateDiff(currentDate, dueDate, true);
+
+        // -1 indicates that the date has passed.
+        // 0 signifies the same date.
+        // 1 denotes the date not having passed yet.
+
+        if (diff > 0 || diff == 0) {
+            result.datePassed = 'no';
+            gs.log('date is not passed');
+        } else {
+            gs.log('date is passed');
+            result.datePassed = 'yes';
+        }
+        return JSON.stringify(result);
+    },
+
+	/*-------STRY0037160 / TASK0405618 : (Rackspace Internal) : Project Write - off Summary (New Feature)--------------- */
+
+    /*********************************   Project Write-Off Summary  ***********************************************************************************/
+    writeOffDueDate: function() {
+		//Due date of Write-off Summary = Last date of Quarter - 5 working Days (Excluding Saturday and Sunday) 
+        var currentDateTime = new GlideDateTime();
+        var currentMonth = currentDateTime.getMonthUTC();
+        var currentYear = currentDateTime.getYearUTC();
+        var lastQuaterMonth = [3, 6, 9, 12]; //Last Month of Quarter 
+        var checklastQuaterMonth = lastQuaterMonth.indexOf(currentMonth);
+        var dateStorage = [];
+        var datesArray = [];
+        var monthInFullWords = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        var quater = ['Q1', 'Q2', 'Q3', 'Q4'];
+        var x = (currentYear % 4 == 0) ? 29 : 28;
+        var days = [31, x, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+		
+		//Calculating Due Date of the all Quarter of current year
+        for (var i = 0; i < lastQuaterMonth.length; i++) {
+
+            var month = lastQuaterMonth[i];
+            var lastDate = days[month - 1];
+            // gs.print(currentYear+'-'+month+'-'+days[month-1]);
+
+            for (var j = 1; j <= lastDate; j++) {
+                var startingDate = currentYear + '-' + month + '-' + j;
+                var gdt = new GlideDateTime(startingDate);
+                if (gdt.getDayOfWeekUTC() == 1 || gdt.getDayOfWeekUTC() == 2 || gdt.getDayOfWeekUTC() == 3 || gdt.getDayOfWeekUTC() == 4 || gdt.getDayOfWeekUTC() == 5) {
+                    datesArray.push(gdt.getDate().toString()); // returns 2024-03-25,2024-06-24,2024-09-24,2024-12-25
+                }
+            }
+            var length = datesArray.length;
+            var dueDateWithTime = datesArray[length - 5];
+            dateStorage.push(quater[i] + '/' + dueDateWithTime); // concatenating Quarter's and Due date of all Quarter. For Example : Q1/2024-03-25,Q2/2024-06-24,Q3/2024-09-24,Q4/2024-12-25
+
+        }
+		
+        var result = {};
+        var details;
+        var currentQuater = this.getQuater();
+		//Get the current Quarter's Due date
+        for (var k = 0; k < dateStorage.length; k++) {
+            if (dateStorage[k].indexOf(currentQuater) >= 0) {
+                details = dateStorage[k];
+            }
+        }
+        var properDetails = details.split('/');
+        result.q = properDetails[0]; // Current Quarter 
+        result.date = properDetails[1]; // Due Date of Current Quarter
+        return JSON.stringify(result);
+
+    },
+    calculateMonth: function(date, sysID) {
+        var gr = new GlideRecord('u_project_release');
+        if (gr.get(sysID)) {
+			//For Project Release Request record's set month field to "Month - Year" format. For Example : "September - 2024"
+            if (gr.u_type == 'project_release') { 
+                //calculate the month and year based on created on field
+                var monthsArray = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+                var gdt = new GlideDateTime(date);
+                var m = gdt.getMonth();
+                var y = gdt.getYear();
+                var result = monthsArray[m - 1] + '-' + y;
+                return result.toString();
+
+            } 
+			// For Project Write-off Summary record's set month field to "Quarter - Year" For Example : "Q3 - 2024"
+			else if (gr.u_type == 'write_off_summary') {
+                var currentDate = new GlideDateTime();
+                var currentMonth = currentDate.getMonthUTC();
+                var currentYear = currentDate.getYearUTC();
+                var currentQuater;
+                if (currentMonth == 1 || currentMonth == 2 || currentMonth == 3) {
+                    currentQuater = 'Q1' + '-' + currentYear;
+                } else if (currentMonth == 4 || currentMonth == 5 || currentMonth == 6) {
+                    currentQuater = 'Q2' + '-' + currentYear;
+                } else if (currentMonth == 7 || currentMonth == 8 || currentMonth == 9) {
+                    currentQuater = 'Q3' + '-' + currentYear;
+                } else if (currentMonth == 10 || currentMonth == 11 || currentMonth == 12) {
+                    currentQuater = 'Q4' + '-' + currentYear;
+                }
+                return currentQuater.toString();
+            }
+        }
+    },
+    getQuater: function() {
+        var gdt = new GlideDateTime();
+        var month = gdt.getMonthUTC();
+        var quater;
+        if (month == 1 || month == 2 || month == 3) { //Q1 - January, February, March
+            quater = 'Q1';
+        } else if (month == 4 || month == 5 || month == 6) { // Q2 - April, May, June
+            quater = 'Q2';
+        } else if (month == 7 || month == 8 || month == 9) { // Q3 - July, August,September
+            quater = 'Q3';
+        } else if (month == 10 || month == 11 || month == 12) { //Q4 - October, November, December
+            quater = 'Q4';
+        }
+        return quater;
+    },
+	/******************* Scheduled Reminder scripts **************************/
+    writeOffGeneralReminder: function() {
+        var userIdSoftware = []; 
+        var userIdEstate = []; 
+        var writeOffSummary = new GlideRecord("u_project_release");
+        writeOffSummary.addQuery('u_month','CONTAINS',this.getQuater());
+        writeOffSummary.query();
+        while (writeOffSummary.next()) {
+            if (writeOffSummary.u_type_write_off == 'ids') { //get release contact's sys_id where type is Software
+                userIdSoftware.push(writeOffSummary.u_release_contact.toString());
+            }
+            if (writeOffSummary.u_type_write_off == 'dc_spend') { //get release contact's sys_id where type is DC Spend & Real Estate
+                userIdEstate.push(writeOffSummary.u_release_contact.toString());
+            }
+        }
+        var array = new ArrayUtil();
+		// Removing the duplicate sys_id's
+        var uniqueUserIDS = array.unique(userIdSoftware); 
+        var uniqueUserEstate = array.unique(userIdEstate);
+		
+		//Triggering one by one event to send Notification to release contact's
+        for (var i = 0; i < uniqueUserIDS.length; i++) {
+            gs.eventQueue('writeoff_email.general.reminder.ids', null, uniqueUserIDS[i]);
+        }
+        for (var j = 0; j < uniqueUserEstate.length; j++) {
+            gs.eventQueue('writeoff_email.general.reminder.dc_spend', null, uniqueUserEstate[j]);
+        }
+    },
+    writeOffFirstReminder: function() {
+        var userIdSoftware = [];
+        var userIdEstate = [];
+        var writeOffSummary = new GlideRecord("u_project_release");
+        writeOffSummary.addEncodedQuery("u_email_update=false^u_type=write_off_summary");
+		writeOffSummary.addQuery('u_month','CONTAINS',this.getQuater());
+        writeOffSummary.query();
+        while (writeOffSummary.next()) {
+            if (writeOffSummary.u_type_write_off == 'ids') { //get release contact's sys_id where type is Software
+                userIdSoftware.push(writeOffSummary.u_release_contact.toString());
+            }
+            if (writeOffSummary.u_type_write_off == 'dc_spend') { //get release contact's sys_id where type is DC Spend & Real Estate
+                userIdEstate.push(writeOffSummary.u_release_contact.toString());
+            }
+        }
+        var array = new ArrayUtil();
+		// Removing the duplicate sys_id's
+        var uniqueUserIDS = array.unique(userIdSoftware);
+        var uniqueUserEstate = array.unique(userIdEstate);
+
+		//Triggering one by one event to send Notification to release contact's
+        for (var i = 0; i < uniqueUserIDS.length; i++) {
+            gs.eventQueue('writeoff_email.first.reminder', null, uniqueUserIDS[i],'ids');
+        }
+        for (var j = 0; j < uniqueUserEstate.length; j++) {
+            gs.eventQueue('writeoff_email.first.reminder', null, uniqueUserEstate[j],'dc_spend');
+        }
+    },
+    writeOffSecondReminder: function() {
+        var userIdSoftware = [];
+        var userIdEstate = [];
+        var writeOffSummary = new GlideRecord("u_project_release");
+        writeOffSummary.addEncodedQuery("u_email_update=false^u_type=write_off_summary");
+		writeOffSummary.addQuery('u_month','CONTAINS',this.getQuater());
+        writeOffSummary.query();
+        while (writeOffSummary.next()) {
+            if (writeOffSummary.u_type_write_off == 'ids') { //get release contact's sys_id where type is Software
+                userIdSoftware.push(writeOffSummary.u_release_contact.toString());
+            }
+            if (writeOffSummary.u_type_write_off == 'dc_spend') { //get release contact's sys_id where type is DC Spend & Real Estate
+                userIdEstate.push(writeOffSummary.u_release_contact.toString());
+            }
+        }
+        var array = new ArrayUtil();
+		// Removing the duplicate sys_id's
+        var uniqueUserIDS = array.unique(userIdSoftware);
+        var uniqueUserEstate = array.unique(userIdEstate);
+
+		//Triggering one by one event to send Notification to release contact's
+        for (var i = 0; i < uniqueUserIDS.length; i++) {
+            gs.eventQueue('writeoff_email.second.reminder', null, uniqueUserIDS[i], 'ids');
+        }
+        for (var j = 0; j < uniqueUserEstate.length; j++) {
+            gs.eventQueue('writeoff_email.second.reminder', null, uniqueUserEstate[j], 'dc_spend');
+        }
+    },
+
+    type: 'ProjectReleaseUtil'
+});
